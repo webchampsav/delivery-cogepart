@@ -8,6 +8,7 @@
     'data': [
         'security/ir.model.access.csv',
         'views/delivery_cogepart_view.xml',
+        'data/delivery_cogepart.xml',
     ],
     'installable': True,
     'application': False,
