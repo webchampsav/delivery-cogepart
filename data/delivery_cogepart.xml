@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<odoo>
-    <record id="delivery_carrier_cogepart" model="delivery.carrier">
-        <field name="name">Cogepart</field>
-        <field name="delivery_type">cogepart</field>
-        <field name="product_id" ref="delivery.product_product_delivery"/>
-    </record>
-</odoo>
