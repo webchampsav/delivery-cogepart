@@ -49,11 +49,13 @@ class ProviderCogepart(models.Model):
         res = []
         for picking in pickings:
             token = self._cogepart_get_token()
+            import logging
+            _logger = logging.getLogger(__name__)
+            _logger.warning("COGEPART TOKEN: %s", token)
             headers = {
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json"
             }
-
             partner = picking.partner_id
 
             # Payload minimum viable selon la doc Cogepart
