@@ -33,14 +33,14 @@ class ProviderCogepart(models.Model):
         except requests.exceptions.RequestException as e:
             raise UserError(_("Cogepart : impossible de joindre l'API.\n%s") % str(e))
 
-        if response.status_code != 201:
+        if response.status_code not in (200, 201):
             raise UserError(_(
                 "Cogepart : authentification échouée.\n"
                 "Vérifiez votre login et mot de passe API.\n"
                 "Réponse serveur : %s"
             ) % response.text)
 
-        return response.json()  # le token JWT brut
+        return response.text.strip('"')  # le token JWT brut
 
     # --------------------------------------------------
     # 2. Envoi de la commande → création d'une mission
