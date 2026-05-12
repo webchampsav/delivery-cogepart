@@ -97,6 +97,7 @@ class ProviderCogepart(models.Model):
                     "lastname": parts[1],
                 }
 
+            _logger.warning("COGEPART PAYLOAD: %s", payload)
             url = f"{self.cogepart_api_url}/mission"
             try:
                 response = requests.post(url, json=payload, headers=headers, timeout=15)
