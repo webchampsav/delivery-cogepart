@@ -7,11 +7,17 @@
         <field name="arch" type="xml">
             <xpath expr="//sheet" position="inside">
                 <div invisible="delivery_type != 'cogepart'">
-                    <group string="Configuration Cogepart">
+                    <group string="Connexion API Cogepart">
                         <field name="cogepart_login"/>
                         <field name="cogepart_password" password="True"/>
-                        <field name="cogepart_siret"/>
                         <field name="cogepart_api_url"/>
+                    </group>
+                    <group string="Adresse d'enlèvement (entrepôt)">
+                        <field name="cogepart_pickup_name"/>
+                        <field name="cogepart_pickup_phone"/>
+                        <field name="cogepart_pickup_street"/>
+                        <field name="cogepart_pickup_zip"/>
+                        <field name="cogepart_pickup_city"/>
                     </group>
                 </div>
             </xpath>
