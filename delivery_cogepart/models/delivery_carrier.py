@@ -1,6 +1,9 @@
 import requests
+import logging
 from odoo import models, fields, _
 from odoo.exceptions import UserError
+
+_logger = logging.getLogger(__name__)
 
 
 class ProviderCogepart(models.Model):
@@ -13,11 +16,17 @@ class ProviderCogepart(models.Model):
 
     cogepart_login = fields.Char(string='Login API Cogepart')
     cogepart_password = fields.Char(string='Mot de passe API Cogepart')
-    cogepart_siret = fields.Char(string='SIRET (identifiant client Cogepart)')
     cogepart_api_url = fields.Char(
         string='URL API',
         default='https://api.cogepart.fr/v1.0'
     )
+
+    # Adresse d'enlèvement fixe (entrepôt Champs & Saveurs)
+    cogepart_pickup_name = fields.Char(string='Nom contact enlèvement')
+    cogepart_pickup_phone = fields.Char(string='Téléphone enlèvement')
+    cogepart_pickup_street = fields.Char(string='Adresse enlèvement')
+    cogepart_pickup_zip = fields.Char(string='Code postal enlèvement')
+    cogepart_pickup_city = fields.Char(string='Ville enlèvement')
 
     # --------------------------------------------------
     # 1. Authentification → récupère le token JWT
@@ -40,7 +49,7 @@ class ProviderCogepart(models.Model):
                 "Réponse serveur : %s"
             ) % response.text)
 
-        return response.text.strip('"')  # le token JWT brut
+        return response.text.strip('"')
 
     # --------------------------------------------------
     # 2. Envoi de la commande → création d'une mission
@@ -49,22 +58,64 @@ class ProviderCogepart(models.Model):
         res = []
         for picking in pickings:
             token = self._cogepart_get_token()
-            import logging
-            _logger = logging.getLogger(__name__)
-            _logger.warning("COGEPART TOKEN: %s", token)
             headers = {
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json"
             }
+
             partner = picking.partner_id
 
-            # Payload minimum viable selon la doc Cogepart
+            # Construction de la liste des colis depuis les mouvements de stock
+            parcel_list = []
+            for move_line in picking.move_line_ids:
+                barcode = (
+                    move_line.lot_id.name
+                    or move_line.product_id.barcode
+                    or move_line.product_id.default_code
+                    or f"REF-{picking.name}-{move_line.id}"
+                )
+                weight = move_line.product_id.weight or 1.0
+                parcel_list.append({
+                    "dimensions": {
+                        "weight": {
+                            "unit": "kg",
+                            "value": str(weight)
+                        }
+                    },
+                    "barcode": barcode
+                })
+
+            # Si aucun colis trouvé, on met un colis générique
+            if not parcel_list:
+                parcel_list = [{
+                    "dimensions": {
+                        "weight": {
+                            "unit": "kg",
+                            "value": str(picking.shipping_weight or 1.0)
+                        }
+                    },
+                    "barcode": f"REF-{picking.name}"
+                }]
+
+            # Poids total
+            total_weight = sum(
+                float(p["dimensions"]["weight"]["value"]) for p in parcel_list
+            )
+
+            # Téléphone et email du destinataire
+            phone_list = []
+            if partner.phone:
+                phone_list.append({"value": partner.phone})
+            if partner.mobile:
+                phone_list.append({"value": partner.mobile})
+
+            email_list = []
+            if partner.email:
+                email_list.append({"value": partner.email})
+
             payload = {
-                "client": {
-                    "company": {
-                        "identifierType": "SIRET",
-                        "identifierValue": self.cogepart_siret or '',
-                    }
+                "externalReference": {
+                    "value": picking.name
                 },
                 "deliveryLocation": {
                     "address": {
@@ -72,39 +123,57 @@ class ProviderCogepart(models.Model):
                             partner.street or '',
                             partner.street2 or '',
                         ],
-                        "zipCode": partner.zip or '',
                         "city": partner.city or '',
+                        "zipCode": partner.zip or '',
                         "countryCode": partner.country_id.code or 'FR',
                     },
                     "entity": {
                         "person": {
                             "lastname": partner.name or '',
-                            "firstname": '',
-                        }
+                        },
+                        "company": {
+                            "name": partner.commercial_company_name or ''
+                        },
+                        "phoneList": phone_list,
+                        "emailList": email_list,
+                    }
+                },
+                "pickupLocation": {
+                    "address": {
+                        "addresslineList": [
+                            self.cogepart_pickup_street or ''
+                        ],
+                        "city": self.cogepart_pickup_city or '',
+                        "zipCode": self.cogepart_pickup_zip or '',
+                        "countryCode": "FR"
+                    },
+                    "entity": {
+                        "person": {
+                            "lastname": self.cogepart_pickup_name or ''
+                        },
+                        "phoneList": [
+                            {"value": self.cogepart_pickup_phone or ''}
+                        ]
                     }
                 },
                 "dimensions": {
-                    "itemCount": int(picking.shipping_weight) or 1
+                    "weight": {
+                        "unit": "kg",
+                        "value": str(total_weight)
+                    }
                 },
-                "customerReference": picking.name,
+                "parcelList": parcel_list
             }
 
-            # Si le partenaire a nom + prénom séparés (contact individuel)
-            if partner.is_company is False and ' ' in (partner.name or ''):
-                parts = partner.name.split(' ', 1)
-                payload["deliveryLocation"]["entity"]["person"] = {
-                    "firstname": parts[0],
-                    "lastname": parts[1],
-                }
-
             _logger.warning("COGEPART PAYLOAD: %s", payload)
+
             url = f"{self.cogepart_api_url}/mission"
             try:
                 response = requests.post(url, json=payload, headers=headers, timeout=15)
             except requests.exceptions.RequestException as e:
                 raise UserError(_("Cogepart : erreur réseau.\n%s") % str(e))
 
-            if response.status_code != 201:
+            if response.status_code not in (200, 201):
                 raise UserError(_(
                     "Cogepart : erreur lors de l'envoi de %s.\n"
                     "Réponse serveur : %s"
