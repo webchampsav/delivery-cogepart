@@ -32,6 +32,8 @@ class ProviderCogepart(models.Model):
     # 1. Authentification → récupère le token JWT
     # --------------------------------------------------
     def _cogepart_get_token(self):
+        if not self.cogepart_login or not self.cogepart_password:
+            raise UserError(_("Veuillez renseigner le login et mot de passe API de Cogepart dans la configuration du transporteur."))
         url = f"{self.cogepart_api_url}/auth/login"
         payload = {
             "login": self.cogepart_login,
@@ -56,34 +58,48 @@ class ProviderCogepart(models.Model):
     # --------------------------------------------------
     def cogepart_send_shipping(self, pickings):
         res = []
-        for picking in pickings:
-            token = self._cogepart_get_token()
-            headers = {
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json"
-            }
+        token = self._cogepart_get_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
 
+        for picking in pickings:
             partner = picking.partner_id
 
-            # Construction de la liste des colis depuis les mouvements de stock
+            # Construction de la liste des colis
             parcel_list = []
-            for move_line in picking.move_line_ids:
-                barcode = (
-                    move_line.lot_id.name
-                    or move_line.product_id.barcode
-                    or move_line.product_id.default_code
-                    or f"REF-{picking.name}-{move_line.id}"
-                )
-                weight = move_line.product_id.weight or 1.0
-                parcel_list.append({
-                    "dimensions": {
-                        "weight": {
-                            "unit": "kg",
-                            "value": str(weight)
-                        }
-                    },
-                    "barcode": barcode
-                })
+            if picking.package_ids:
+                for package in picking.package_ids:
+                    barcode = package.name or f"PKG-{picking.name}-{package.id}"
+                    weight = package.shipping_weight or package.weight or 1.0
+                    parcel_list.append({
+                        "dimensions": {
+                            "weight": {
+                                "unit": "kg",
+                                "value": str(weight)
+                            }
+                        },
+                        "barcode": barcode
+                    })
+            else:
+                for move_line in picking.move_line_ids:
+                    barcode = (
+                        move_line.lot_id.name
+                        or move_line.product_id.barcode
+                        or move_line.product_id.default_code
+                        or f"REF-{picking.name}-{move_line.id}"
+                    )
+                    weight = move_line.product_id.weight or 1.0
+                    parcel_list.append({
+                        "dimensions": {
+                            "weight": {
+                                "unit": "kg",
+                                "value": str(weight)
+                            }
+                        },
+                        "barcode": barcode
+                    })
 
             # Si aucun colis trouvé, on met un colis générique
             if not parcel_list:
@@ -182,6 +198,25 @@ class ProviderCogepart(models.Model):
             data = response.json()
             mission_id = str(data.get('id', ''))
 
+            # Récupération et attachement de l'étiquette PDF
+            label_url = f"{self.cogepart_api_url}/label/mission/{mission_id}?format=pdf&mode=single"
+            try:
+                label_response = requests.get(label_url, headers=headers, timeout=10)
+                if label_response.status_code == 200:
+                    label_data = label_response.json()
+                    if label_data and isinstance(label_data, list) and len(label_data) > 0:
+                        base64_pdf = label_data[0].get('data')
+                        if base64_pdf:
+                            import base64
+                            pdf_binary = base64.b64decode(base64_pdf)
+                            attachment_name = f"Label_Cogepart_{picking.name}.pdf"
+                            picking.message_post(
+                                body=_("Étiquette de transport Cogepart générée avec succès."),
+                                attachments=[(attachment_name, pdf_binary)]
+                            )
+            except Exception as e:
+                _logger.warning("Cogepart : impossible de récupérer et d'attacher l'étiquette PDF. %s", str(e))
+
             res.append({
                 'exact_price': 0.0,
                 'tracking_number': mission_id,
@@ -193,8 +228,8 @@ class ProviderCogepart(models.Model):
     # --------------------------------------------------
     def cogepart_get_tracking_link(self, picking):
         return (
-            f"https://api.cogepart.fr/v1.0/label/mission/"
-            f"{picking.carrier_tracking_ref}/single/pdf"
+            f"https://zou.cogepart.fr/tracking/suivi_livraison.php?"
+            f"id={picking.carrier_tracking_ref}&code={picking.name}"
         )
 
     # --------------------------------------------------
