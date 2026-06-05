@@ -109,8 +109,6 @@ class ProviderCogepart(models.Model):
             phone_list = []
             if partner.phone:
                 phone_list.append({"value": partner.phone})
-            if partner.mobile:
-                phone_list.append({"value": partner.mobile})
 
             email_list = []
             if partner.email:
