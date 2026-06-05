@@ -5,21 +5,23 @@
         <field name="model">delivery.carrier</field>
         <field name="inherit_id" ref="delivery.view_delivery_carrier_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//sheet" position="inside">
-                <div invisible="delivery_type != 'cogepart'">
-                    <group string="Connexion API Cogepart">
-                        <field name="cogepart_login"/>
-                        <field name="cogepart_password" password="True"/>
-                        <field name="cogepart_api_url"/>
+            <xpath expr="//notebook" position="inside">
+                <page string="Cogepart" name="cogepart" invisible="delivery_type != 'cogepart'">
+                    <group>
+                        <group string="Connexion API Cogepart">
+                            <field name="cogepart_login" required="delivery_type == 'cogepart'"/>
+                            <field name="cogepart_password" password="True" required="delivery_type == 'cogepart'"/>
+                            <field name="cogepart_api_url" required="delivery_type == 'cogepart'"/>
+                        </group>
+                        <group string="Adresse d'enlèvement (entrepôt)">
+                            <field name="cogepart_pickup_name" required="delivery_type == 'cogepart'"/>
+                            <field name="cogepart_pickup_phone" required="delivery_type == 'cogepart'"/>
+                            <field name="cogepart_pickup_street" required="delivery_type == 'cogepart'"/>
+                            <field name="cogepart_pickup_zip" required="delivery_type == 'cogepart'"/>
+                            <field name="cogepart_pickup_city" required="delivery_type == 'cogepart'"/>
+                        </group>
                     </group>
-                    <group string="Adresse d'enlèvement (entrepôt)">
-                        <field name="cogepart_pickup_name"/>
-                        <field name="cogepart_pickup_phone"/>
-                        <field name="cogepart_pickup_street"/>
-                        <field name="cogepart_pickup_zip"/>
-                        <field name="cogepart_pickup_city"/>
-                    </group>
-                </div>
+                </page>
             </xpath>
         </field>
     </record>
