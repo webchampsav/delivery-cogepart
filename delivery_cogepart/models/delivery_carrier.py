@@ -69,37 +69,24 @@ class ProviderCogepart(models.Model):
 
             # Construction de la liste des colis
             parcel_list = []
-            if picking.package_ids:
-                for package in picking.package_ids:
-                    barcode = package.name or f"PKG-{picking.name}-{package.id}"
-                    weight = package.shipping_weight or package.weight or 1.0
-                    parcel_list.append({
-                        "dimensions": {
-                            "weight": {
-                                "unit": "kg",
-                                "value": str(weight)
-                            }
-                        },
-                        "barcode": barcode
-                    })
-            else:
-                for move_line in picking.move_line_ids:
-                    barcode = (
-                        move_line.lot_id.name
-                        or move_line.product_id.barcode
-                        or move_line.product_id.default_code
-                        or f"REF-{picking.name}-{move_line.id}"
-                    )
-                    weight = move_line.product_id.weight or 1.0
-                    parcel_list.append({
-                        "dimensions": {
-                            "weight": {
-                                "unit": "kg",
-                                "value": str(weight)
-                            }
-                        },
-                        "barcode": barcode
-                    })
+            parcel_list = []
+            for move_line in picking.move_line_ids:
+                barcode = (
+                    move_line.lot_id.name
+                    or move_line.product_id.barcode
+                    or move_line.product_id.default_code
+                    or f"REF-{picking.name}-{move_line.id}"
+                )
+                weight = move_line.product_id.weight or 1.0
+                parcel_list.append({
+                    "dimensions": {
+                        "weight": {
+                            "unit": "kg",
+                            "value": str(weight)
+                        }
+                    },
+                    "barcode": barcode
+                })
 
             # Si aucun colis trouvé, on met un colis générique
             if not parcel_list:
