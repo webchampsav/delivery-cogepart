@@ -29,6 +29,16 @@ class ProviderCogepart(models.Model):
     cogepart_pickup_city = fields.Char(string='Ville enlèvement')
 
     # --------------------------------------------------
+    # 0. Calcul du tarif → rend le transporteur disponible
+    # --------------------------------------------------
+    def cogepart_rate_shipment(self, order):
+        return {
+            'success': True,
+            'price': self.fixed_price or 0.0,
+            'warning_message': False,
+        }
+        
+    # --------------------------------------------------
     # 1. Authentification → récupère le token JWT
     # --------------------------------------------------
     def _cogepart_get_token(self):
