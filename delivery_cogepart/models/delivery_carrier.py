@@ -29,15 +29,73 @@ class ProviderCogepart(models.Model):
     cogepart_pickup_city = fields.Char(string='Ville enlèvement')
 
     # --------------------------------------------------
+    # Grille tarifaire Cogepart - Contrat 02/02/2026
+    # --------------------------------------------------
+    _COGEPART_ZONES = {
+        '30': 1,
+        '34': 2, '11': 2, '66': 2,
+        '13': 3,
+    }
+
+    _COGEPART_GRID = {
+        1: [(9.99, 9.22), (19.99, 12.58), (29.99, 13.32),
+            (49.99, 15.52), (69.99, 22.33), (99.99, 28.47)],
+        2: [(9.99, 11.08), (19.99, 14.44), (29.99, 15.18),
+            (49.99, 20.28), (69.99, 27.09), (99.99, 33.23)],
+        3: [(9.99, 14.81), (19.99, 18.16), (29.99, 18.91),
+            (49.99, 29.80), (69.99, 36.61), (99.99, 42.75)],
+    }
+
+    _COGEPART_PER_KG = {1: 0.29, 2: 0.43, 3: 0.52}
+
+    _COGEPART_PARTICULIER_SUPPLEMENT = 5.0
+
+    # --------------------------------------------------
     # 0. Calcul du tarif → rend le transporteur disponible
     # --------------------------------------------------
     def cogepart_rate_shipment(self, order):
+        partner = order.partner_shipping_id
+        dept = (partner.zip or '')[:2]
+        zone = self._COGEPART_ZONES.get(dept)
+
+        if not zone:
+            return {
+                'success': False,
+                'price': 0.0,
+                'error_message': _(
+                    "Nous sommes désolés, nous ne livrons pas encore dans votre département."
+                ),
+            }
+
+        # Calcul du poids total de la commande
+        weight = sum(
+            line.product_id.weight * line.product_uom_qty
+            for line in order.order_line
+            if line.product_id and line.product_id.weight
+        )
+        weight = weight or 1.0
+
+        # Recherche du tarif dans la grille
+        price = None
+        for max_weight, tarif in self._COGEPART_GRID[zone]:
+            if weight <= max_weight:
+                price = tarif
+                break
+
+        # Au-delà de 100 kg : facturation au kg
+        if price is None:
+            price = weight * self._COGEPART_PER_KG[zone]
+
+        # Supplément particulier : +5€ si le partenaire n'est pas une société
+        if not partner.is_company:
+            price += self._COGEPART_PARTICULIER_SUPPLEMENT
+
         return {
             'success': True,
-            'price': self.fixed_price or 0.0,
+            'price': price,
             'warning_message': False,
         }
-        
+
     # --------------------------------------------------
     # 1. Authentification → récupère le token JWT
     # --------------------------------------------------
@@ -78,7 +136,6 @@ class ProviderCogepart(models.Model):
             partner = picking.partner_id
 
             # Construction de la liste des colis
-            parcel_list = []
             parcel_list = []
             for move_line in picking.move_line_ids:
                 barcode = (
